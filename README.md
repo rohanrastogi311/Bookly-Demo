@@ -69,6 +69,50 @@ There are **72 automated checks** covering policy, database/HTTP behaviour, voic
 
 The simulation clock is **3 November 2026, 10:30 UTC**. Use “tomorrow” even if the real date differs. There is no scenario selector in the customer flow.
 
+### Scenario map
+
+The main journey starts with the late birthday gift. Replacement and refund are alternative outcomes for the same order.
+
+```mermaid
+flowchart TD
+    Start["Customer: The birthday is tomorrow and the book has not arrived"] --> Order["Bea identifies The Last Dragon · BK-1042"]
+    Order --> Checks["Check alternatives: stock, cutoff, deadline, destination and price"]
+    Order -->|Customer prefers a refund| Refund["Prepare refund proposal"]
+    Checks -->|Eligible book chosen: Ember| Replace["Prepare replacement proposal: cancel original, no extra charge"]
+    Checks -->|No suitable replacement| Refund
+    Replace -->|Customer changes their mind| Refund
+    Replace --> ReplaceOK["Customer: confirm replacement"]
+    Refund --> RefundOK["Customer: confirm refund"]
+    ReplaceOK --> Validate["Backend rechecks eligibility and the pending proposal"]
+    RefundOK --> Validate
+    Validate -->|Checks pass| Receipt["Save once and return a receipt"]
+    Validate -->|Expired, changed or unavailable| Refresh["Refresh checks and proposal before asking for approval again"]
+    Receipt --> Continue["Continue in the same conversation"]
+
+    classDef customer fill:#eef2ff,stroke:#6366f1,color:#1e1b4b
+    classDef check fill:#f8fafc,stroke:#64748b,color:#0f172a
+    classDef proposal fill:#fff7ed,stroke:#ea580c,color:#7c2d12
+    classDef success fill:#ecfdf5,stroke:#059669,color:#064e3b
+    class Start,ReplaceOK,RefundOK customer
+    class Order,Checks,Validate,Refresh check
+    class Replace,Refund proposal
+    class Receipt,Continue success
+```
+
+**Approval is specific:** a generic “yes” keeps the proposal pending. A replacement updates stock and cancels the original order; a refund records the refund outcome. Refreshing preserves the receipt, and retrying the same confirmation returns it without repeating the action.
+
+### Continue the conversation
+
+| Customer asks | Bea does |
+| --- | --- |
+| “Where's my Atlas of Hidden Worlds order?” | Switches to **BK-1051**, shows in-transit tracking and records a review case if the customer wants to change the shipped order. |
+| “I want to return The Small Wild Garden.” | Switches to delivered **BK-1038** and checks return policy, offering review rather than an automatic refund. |
+| Reports an unfamiliar address or another security concern | Records a simulated security handoff and pauses automated account changes. |
+
+**If the order is unclear, Bea asks a focused question before proceeding.** These are turns in one conversation, with no scenario selector.
+
+<details>
+<summary>Step-by-step prompts for running the demo</summary>
 1. **Describe the problem:** “My daughter's birthday is tomorrow and her book hasn't arrived.” Bea checks the account and identifies the delayed children's book, **The Last Dragon — BK-1042**. Ambiguous requests prompt clarification.
 2. **Find a solution:** “What similar books could arrive in time? She loves dragons.” The backend checks stock, dispatch cutoff, deadline, destination and price. Ember and Dragon School qualify; in-stock books that would arrive too late are excluded.
 3. **Review:** Choose Ember. Bea prepares a replacement proposal showing the book, delivery, cancellation of the original and no extra charge. Nothing has been committed yet.
@@ -76,6 +120,9 @@ The simulation clock is **3 November 2026, 10:30 UTC**. Use “tomorrow” even 
 5. **See the outcome:** The backend rechecks eligibility, saves the resolution, reduces stock and returns a receipt. Reloading preserves it. Retrying the same confirmation returns the existing receipt.
 6. **Continue naturally:** “Where's my Atlas of Hidden Worlds order?” Bea switches to **BK-1051**, already in transit. Tracking works immediately; changing that shipped order requires a review case.
 7. **Try a return:** “I want to return The Small Wild Garden.” **BK-1038** is delivered, so Bea offers policy review rather than inventing an automatic refund.
+
+
+</details>
 
 Open **Behind the scenes** to inspect actual tool calls and results. Voice and typing share the same session. Voice submits after a short pause; the microphone ignores Bea's playback, then resumes. **Interrupt Bea** stops playback.
 
