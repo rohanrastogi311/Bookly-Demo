@@ -1,0 +1,6 @@
+import {sameOrigin,session,json,failure} from '@/lib/http';
+import {config} from '@/lib/agent';
+export async function POST(req:Request){try{sameOrigin(req);const s=await session(req);const key=config().ELEVENLABS_API_KEY;if(!key)return json({error:'ElevenLabs is not connected.'},503);const {text}=await req.json() as {text:string};if(typeof text!=='string'||text.length>3000)throw Error('Invalid speech request.');
+ // Only synthesise a response actually generated in this session; this is not an open TTS relay.
+ if(!s.state.messages.some(m=>m.role==='assistant'&&m.content===text))throw Error('Response does not belong to this conversation.');
+ const voice=config().ELEVENLABS_VOICE_ID||'JBFqnCBsd6RMkjVDRZzb';const r=await fetch(`https://api.elevenlabs.io/v1/text-to-speech/${encodeURIComponent(voice)}/stream`,{method:'POST',headers:{'xi-api-key':key,'Content-Type':'application/json'},body:JSON.stringify({text,model_id:'eleven_flash_v2_5',voice_settings:{stability:0.5,similarity_boost:0.75}}),signal:AbortSignal.timeout(25000)});if(!r.ok)throw Error(`Speech generation returned ${r.status}.`);return new Response(r.body,{headers:{'Content-Type':'audio/mpeg','Cache-Control':'no-store'}});}catch(e){return failure(e,502)}}

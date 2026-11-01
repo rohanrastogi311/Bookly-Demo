@@ -1,0 +1,23 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import {BOOKS,book,seedState,quoteBook,validateProposal,newProposal,orders} from '../lib/domain.ts';
+test('stock alone does not establish deadline eligibility',()=>{const s=seedState();const q=quoteBook(s,book('atlas'),5);assert.equal(q.eligible,false);assert.equal(q.reason,'Arrives after the deadline')});
+test('cutoff moves next-day stock beyond the birthday deadline',()=>{const s=seedState('cutoff');assert.equal(quoteBook(s,book('ember'),8).eligible,false)});
+test('in-stock dragon alternative arrives by deadline before cutoff',()=>{const s=seedState();const q=quoteBook(s,book('ember'),8);assert.equal(q.eligible,true);assert.equal(q.estimatedArrival,'2026-11-04');assert.ok(q.matchedTags.includes('dragons'))});
+test('zero stock cannot be recommended',()=>{assert.equal(quoteBook(seedState(),book('ember'),0).eligible,false)});
+test('a more expensive alternative is not silently charged',()=>{const s=seedState();const b={...book('ember'),price:1700};assert.equal(quoteBook(s,b,8).eligible,false)});
+test('refund requires a selected customer order',()=>{assert.equal(validateProposal(seedState(),'refund').ok,false)});
+test('a shipped order cannot be automatically swapped or refunded',()=>{const s=seedState('shipped');s.selectedOrder='BK-1042';assert.equal(validateProposal(s,'refund').ok,false);assert.equal(validateProposal(s,'replacement','ember').ok,false)});
+test('an eligible replacement needs a delivery quote first',()=>{const s=seedState();s.selectedOrder='BK-1042';assert.equal(validateProposal(s,'replacement','ember').ok,false);s.quotes=[quoteBook(s,book('ember'),8)];assert.equal(validateProposal(s,'replacement','ember').ok,true)});
+test('expired quotes are rejected',()=>{const s=seedState();s.selectedOrder='BK-1042';s.quotes=[{...quoteBook(s,book('ember'),8),expiresAt:'2000-01-01T00:00:00Z'}];assert.equal(validateProposal(s,'replacement','ember').ok,false)});
+test('proposal describes original cancellation and no extra charge',()=>{const s=seedState();s.selectedOrder='BK-1042';s.quotes=[quoteBook(s,book('ember'),8)];const p=newProposal(s,'replacement','ember');assert.equal(p.amount,0);assert.match(p.summary,/Cancel the delayed original/);assert.match(p.summary,/not guaranteed/)});
+test('security handoff prevents otherwise eligible changes',()=>{const s=seedState();s.selectedOrder='BK-1042';s.escalation={id:'case',summary:'unknown address'};assert.equal(validateProposal(s,'refund').ok,false)});
+test('completed resolution blocks another proposal',()=>{const s=seedState();s.selectedOrder='BK-1042';s.receipt={id:'r1',kind:'refund',orderId:'BK-1042',amount:1499,createdAt:'now',originalDisposition:'cancelled'};assert.equal(validateProposal(s,'refund').ok,false)});
+test('unknown action is rejected',()=>{const s=seedState();s.selectedOrder='BK-1042';assert.equal(validateProposal(s,'charge').ok,false)});
+test('flagged address requires human review',()=>{const s=seedState('security');s.selectedOrder='BK-1042';assert.equal(validateProposal(s,'refund').ok,false)});
+
+const {resolveOrderReference}=await import('../lib/domain.ts');
+test('owned book title resolves to its canonical order ID',()=>{assert.deepEqual(resolveOrderReference(seedState(),'The Last Dragon'),{status:'matched',orderId:'BK-1042'})});
+test('order references tolerate case and separators without fuzzy matching unknown IDs',()=>{assert.deepEqual(resolveOrderReference(seedState(),'Please check bk 1042.',true),{status:'matched',orderId:'BK-1042'});assert.equal(resolveOrderReference(seedState(),'BK-9999 for The Last Dragon',true).status,'unknown')});
+test('multiple titles require clarification',()=>{assert.equal(resolveOrderReference(seedState(),'The Last Dragon or The Small Wild Garden',true).status,'ambiguous')});
+test('a different title does not silently resolve by a shared word',()=>{assert.equal(resolveOrderReference(seedState(),'The Other Dragon').status,'none')});

@@ -1,0 +1,4 @@
+import {session,sameOrigin,json,failure} from '@/lib/http';
+import {matchesExplicitConfirmation} from '@/lib/confirmation';
+import {complete,loadSession} from '@/lib/store';
+export async function POST(req:Request){try{sameOrigin(req);const {token,channel,utterance}=await req.json() as {token?:string;channel?:string;utterance?:string};if(typeof token!=='string'||token.length>100)throw Error('Missing confirmation token.');const s=await session(req);if(channel==='voice'){const kind=s.state.pending?.kind||s.state.receipt?.kind;if((kind!=='replacement'&&kind!=='refund')||!matchesExplicitConfirmation(utterance,{kind}))throw Error('Say confirm replacement or confirm refund to approve the matching pending action.');if(s.state.pending?.token===token)s.state.messages.push({role:'user',content:utterance!});}const receipt=await complete(s,token);const current=await loadSession(s.id,s.owner);return json({receipt,state:current!.state});}catch(e){return failure(e,409)}}
